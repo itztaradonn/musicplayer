@@ -15,13 +15,14 @@ export async function getAllTracks() {
 }
 
 export async function addTrack(file) {
-  const fileName = `${Date.now()}_${file.name}`
+  const safeName = `${Date.now()}_${crypto.randomUUID()}.mp3`
   const { error: uploadError } = await supabase.storage
     .from(BUCKET)
-    .upload(fileName, file, { contentType: file.type })
+    .upload(safeName, file, { contentType: 'audio/mpeg' })
   if (uploadError) throw uploadError
 
   const name = file.name.replace(/\.mp3$/i, '')
+  const fileName = safeName
   const { data, error } = await supabase
     .from('tracks')
     .insert({ name, file_path: fileName })

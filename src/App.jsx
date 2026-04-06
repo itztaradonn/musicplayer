@@ -168,6 +168,9 @@ function App() {
         setCurrentIndex(tracks.length)
         setIsPlaying(true)
       }
+    } catch (err) {
+      console.error('Upload failed:', err)
+      alert('Upload failed: ' + (err.message || err))
     } finally {
       setUploading(false)
     }
