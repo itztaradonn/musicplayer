@@ -1,1 +1,14 @@
 @import "tailwindcss";
+
+@theme {
+  --color-accent: #fa2d48; /* Apple Music red */
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+.animate-sheet-up { animation: sheet-up 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .animate-sheet-up { animation: none; }
+}

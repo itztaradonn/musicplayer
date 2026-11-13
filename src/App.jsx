@@ -1,16 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { getAllTracks, addTrack, deleteTrack } from './db'
-import {
-  Play, Pause, SkipBack, SkipForward, Plus, Trash2,
-  Music, Repeat, Shuffle, Volume2, VolumeX, List
-} from 'lucide-react'
+import { getAllTracks, addTrack, deleteTrack, withUrls } from './db'
+import { useImportJob } from './useImportJob'
+import Artwork from './components/Artwork'
+import ImportModal from './components/ImportModal'
+import LyricsEditor from './components/LyricsEditor'
+import NowPlaying from './components/NowPlaying'
+import { Controls, ProgressBar, Volume } from './components/Transport'
+import { formatTime } from './lib/format'
+import { Plus, Trash2, Music, List, Link as LinkIcon, Loader, Check, TriangleAlert } from 'lucide-react'
 import './App.css'
 
-function formatTime(sec) {
-  if (!sec || isNaN(sec)) return '0:00'
-  const m = Math.floor(sec / 60)
-  const s = Math.floor(sec % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
+const STAGE_LABELS = {
+  queued: 'Waiting for the server…',
+  downloading: 'Downloading from YouTube…',
+  saving: 'Saving to your library…',
+  transcribing: 'Listening for lyrics…',
 }
 
 function App() {
@@ -26,12 +30,24 @@ function App() {
   const [showList, setShowList] = useState(true)
   const [dragOver, setDragOver] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [showNowPlaying, setShowNowPlaying] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [editingLyrics, setEditingLyrics] = useState(false)
 
   const audioRef = useRef(null)
   const fileInputRef = useRef(null)
-  const progressRef = useRef(null)
 
   const currentTrack = currentIndex >= 0 ? tracks[currentIndex] : null
+
+  // Adds a track, or refreshes it in place when the server updates it (e.g. lyrics arrive).
+  const upsertTrack = useCallback((row) => {
+    const track = withUrls(row)
+    setTracks((prev) =>
+      prev.some((t) => t.id === track.id) ? prev.map((t) => (t.id === track.id ? track : t)) : [...prev, track]
+    )
+  }, [])
+
+  const { job, start: startImport, reset: resetImport } = useImportJob(upsertTrack)
 
   // Load tracks from Supabase on mount
   useEffect(() => {
@@ -90,6 +106,22 @@ function App() {
     }
   }, [currentIndex, tracks, repeat])
 
+  const seekTo = useCallback((seconds) => {
+    if (!audioRef.current) return
+    audioRef.current.currentTime = seconds
+    setCurrentTime(seconds)
+  }, [])
+
+  const handleVolume = useCallback((v) => {
+    setVolume(v)
+    setMuted(v === 0)
+    if (audioRef.current) audioRef.current.volume = v
+  }, [])
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.muted = muted
+  }, [muted])
+
   // Set audio source when track changes
   useEffect(() => {
     const track = currentIndex >= 0 ? tracks[currentIndex] : null
@@ -99,17 +131,22 @@ function App() {
     audio.src = track.url
     audio.load()
     audio.play().catch(() => {})
-
-    // Media Session metadata
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: track.name,
-        artist: 'My Music',
-        album: 'My Library',
-      })
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex])
+
+  // Lock-screen / notification metadata (also refreshes when the cover or title arrives)
+  const metaName = currentTrack?.name
+  const metaArtist = currentTrack?.artist
+  const metaArtwork = currentTrack?.artworkUrl
+  useEffect(() => {
+    if (!metaName || !('mediaSession' in navigator)) return
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: metaName,
+      artist: metaArtist || 'My Music',
+      album: 'My Library',
+      artwork: metaArtwork ? [{ src: metaArtwork, sizes: '640x640', type: 'image/jpeg' }] : [],
+    })
+  }, [metaName, metaArtist, metaArtwork])
 
   // Media Session action handlers
   useEffect(() => {
@@ -119,10 +156,7 @@ function App() {
     navigator.mediaSession.setActionHandler('previoustrack', () => handlePrev())
     navigator.mediaSession.setActionHandler('nexttrack', () => handleNext())
     navigator.mediaSession.setActionHandler('seekto', (details) => {
-      if (audioRef.current && details.seekTime != null) {
-        audioRef.current.currentTime = details.seekTime
-        setCurrentTime(details.seekTime)
-      }
+      if (details.seekTime != null) seekTo(details.seekTime)
     })
     return () => {
       navigator.mediaSession.setActionHandler('play', null)
@@ -131,7 +165,7 @@ function App() {
       navigator.mediaSession.setActionHandler('nexttrack', null)
       navigator.mediaSession.setActionHandler('seekto', null)
     }
-  }, [handlePlayPause, handlePrev, handleNext])
+  }, [handlePlayPause, handlePrev, handleNext, seekTo])
 
   const handleTrackEnd = () => {
     const next = getNextIndex()
@@ -141,14 +175,6 @@ function App() {
     } else {
       setIsPlaying(false)
     }
-  }
-
-  const handleSeek = (e) => {
-    const rect = progressRef.current.getBoundingClientRect()
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
-    const pct = Math.max(0, Math.min(1, x / rect.width))
-    audioRef.current.currentTime = pct * duration
-    setCurrentTime(pct * duration)
   }
 
   const handleFiles = async (files) => {
@@ -176,16 +202,18 @@ function App() {
     }
   }
 
-  const handleDelete = async (e, id, filePath, idx) => {
+  const handleDelete = async (e, track, idx) => {
     e.stopPropagation()
-    await deleteTrack(id, filePath)
-    setTracks((prev) => prev.filter((t) => t.id !== id))
+    await deleteTrack(track.id, track.file_path, track.artwork_path)
+    setTracks((prev) => prev.filter((t) => t.id !== track.id))
     if (idx === currentIndex) {
       audioRef.current.pause()
       setIsPlaying(false)
       setCurrentIndex(-1)
       setCurrentTime(0)
       setDuration(0)
+      setShowNowPlaying(false)
+      setEditingLyrics(false)
     } else if (idx < currentIndex) {
       setCurrentIndex((prev) => prev - 1)
     }
@@ -197,7 +225,15 @@ function App() {
     handleFiles(e.dataTransfer.files)
   }
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+  const importRunning = job && (job.status === 'queued' || job.status === 'running')
+  const controlProps = {
+    isPlaying, shuffle, repeat,
+    onShuffle: () => setShuffle((s) => !s),
+    onRepeat: () => setRepeat((r) => (r + 1) % 3),
+    onPrev: handlePrev,
+    onNext: handleNext,
+    onPlayPause: handlePlayPause,
+  }
 
   return (
     <div
@@ -227,8 +263,8 @@ function App() {
 
       {/* Drag overlay */}
       {dragOver && (
-        <div className="fixed inset-0 z-50 bg-teal-600/20 backdrop-blur-sm flex items-center justify-center">
-          <div className="text-2xl font-semibold text-teal-300 flex flex-col items-center gap-3">
+        <div className="fixed inset-0 z-50 bg-accent/20 backdrop-blur-sm flex items-center justify-center">
+          <div className="text-2xl font-semibold text-white flex flex-col items-center gap-3">
             <Plus size={48} />
             Drop MP3 files here
           </div>
@@ -238,19 +274,28 @@ function App() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 pt-4 pb-2 sm:px-6">
         <div className="flex items-center gap-2">
-          <Music className="text-teal-400" size={24} />
+          <Music className="text-accent" size={24} />
           <h1 className="text-lg font-bold text-white tracking-tight">My Music</h1>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowList(!showList)}
-            className={`p-2 rounded-xl transition-colors ${showList ? 'bg-teal-600/30 text-teal-300' : 'text-zinc-400 hover:text-white'}`}
+            aria-label="Toggle library"
+            className={`p-2 rounded-xl transition-colors ${showList ? 'bg-accent/20 text-accent' : 'text-zinc-400 hover:text-white'}`}
           >
             <List size={20} />
           </button>
           <button
+            onClick={() => setShowImport(true)}
+            aria-label="Add from YouTube"
+            className="p-2 rounded-xl bg-accent hover:brightness-110 text-white transition-all"
+          >
+            <LinkIcon size={20} />
+          </button>
+          <button
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white transition-colors"
+            aria-label="Upload MP3 files"
+            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
           >
             <Plus size={20} />
           </button>
@@ -259,10 +304,31 @@ function App() {
 
       {/* Upload indicator */}
       {uploading && (
-        <div className="mx-4 sm:mx-6 mb-2 px-4 py-2 rounded-xl bg-teal-600/20 border border-teal-500/30 flex items-center gap-3 text-teal-300 text-sm font-medium">
-          <div className="w-4 h-4 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+        <div className="mx-4 sm:mx-6 mb-2 px-4 py-2 rounded-xl bg-accent/15 border border-accent/30 flex items-center gap-3 text-white text-sm font-medium">
+          <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           Uploading...
         </div>
+      )}
+
+      {/* YouTube import status (when the dialog is closed) */}
+      {job && !showImport && (
+        <button
+          onClick={() => setShowImport(true)}
+          className={`mx-4 sm:mx-6 mb-2 px-4 py-2 rounded-xl border flex items-center gap-3 text-sm font-medium text-left ${
+            job.status === 'error'
+              ? 'bg-red-500/15 border-red-500/30 text-red-200'
+              : 'bg-accent/15 border-accent/30 text-white'
+          }`}
+        >
+          {importRunning && <Loader size={16} className="animate-spin text-accent shrink-0" />}
+          {job.status === 'done' && <Check size={16} className="text-emerald-400 shrink-0" />}
+          {job.status === 'error' && <TriangleAlert size={16} className="shrink-0" />}
+          <span className="truncate">
+            {importRunning && (STAGE_LABELS[job.stage] || 'Importing…')}
+            {job.status === 'done' && `Added “${job.track?.name ?? 'song'}”${job.warning ? ' (tap for details)' : ''}`}
+            {job.status === 'error' && job.error}
+          </span>
+        </button>
       )}
 
       {/* Track list */}
@@ -270,12 +336,12 @@ function App() {
         <div className="flex-1 overflow-y-auto px-3 sm:px-5 pb-4">
           {tracks.length === 0 && !uploading ? (
             <div
-              className="flex flex-col items-center justify-center h-64 text-zinc-500 cursor-pointer rounded-2xl border-2 border-dashed border-zinc-700/60 hover:border-teal-500/50 transition-colors mt-4"
-              onClick={() => fileInputRef.current?.click()}
+              className="flex flex-col items-center justify-center h-64 text-zinc-500 cursor-pointer rounded-2xl border-2 border-dashed border-zinc-700/60 hover:border-accent/50 transition-colors mt-4"
+              onClick={() => setShowImport(true)}
             >
               <Music size={48} className="mb-3 text-zinc-600" />
               <p className="text-base font-medium">No tracks yet</p>
-              <p className="text-sm mt-1">Tap here or drag MP3 files to add music</p>
+              <p className="text-sm mt-1">Tap here to add a YouTube link, or drag MP3 files in</p>
             </div>
           ) : (
             <ul className="space-y-1 mt-2">
@@ -283,29 +349,33 @@ function App() {
                 <li
                   key={track.id}
                   onClick={() => { setCurrentIndex(idx); setIsPlaying(true) }}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all group
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all group
                     ${idx === currentIndex
-                      ? 'bg-teal-600/20 border border-teal-500/30'
+                      ? 'bg-accent/15 border border-accent/30'
                       : 'hover:bg-white/5 border border-transparent'
                     }`}
                 >
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0
-                    ${idx === currentIndex ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
-                    {idx === currentIndex && isPlaying ? (
-                      <div className="flex items-end gap-[2px] h-4">
-                        <span className="w-[3px] bg-white rounded-full animate-[bounce_0.6s_ease-in-out_infinite]" style={{ height: '60%' }} />
-                        <span className="w-[3px] bg-white rounded-full animate-[bounce_0.6s_ease-in-out_infinite_0.15s]" style={{ height: '100%' }} />
-                        <span className="w-[3px] bg-white rounded-full animate-[bounce_0.6s_ease-in-out_infinite_0.3s]" style={{ height: '40%' }} />
+                  <div className="relative">
+                    <Artwork src={track.artworkUrl} name={track.name} className="w-11 h-11 rounded-lg" iconSize={16} />
+                    {idx === currentIndex && isPlaying && (
+                      <div className="absolute inset-0 rounded-lg bg-black/50 flex items-center justify-center">
+                        <div className="flex items-end gap-[2px] h-4">
+                          <span className="w-[3px] bg-white rounded-full animate-[bounce_0.6s_ease-in-out_infinite]" style={{ height: '60%' }} />
+                          <span className="w-[3px] bg-white rounded-full animate-[bounce_0.6s_ease-in-out_infinite_0.15s]" style={{ height: '100%' }} />
+                          <span className="w-[3px] bg-white rounded-full animate-[bounce_0.6s_ease-in-out_infinite_0.3s]" style={{ height: '40%' }} />
+                        </div>
                       </div>
-                    ) : (
-                      <Music size={16} />
                     )}
                   </div>
-                  <span className={`flex-1 truncate text-sm font-medium ${idx === currentIndex ? 'text-teal-200' : 'text-zinc-300'}`}>
-                    {track.name}
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`truncate text-sm font-medium ${idx === currentIndex ? 'text-accent' : 'text-zinc-200'}`}>
+                      {track.name}
+                    </p>
+                    {track.artist && <p className="truncate text-xs text-zinc-500">{track.artist}</p>}
+                  </div>
                   <button
-                    onClick={(e) => handleDelete(e, track.id, track.file_path, idx)}
+                    onClick={(e) => handleDelete(e, track, idx)}
+                    aria-label={`Delete ${track.name}`}
                     className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
                   >
                     <Trash2 size={15} />
@@ -319,100 +389,64 @@ function App() {
 
       {/* Player controls - fixed at bottom */}
       <div className="sticky bottom-0 bg-[#0d0d1a]/95 backdrop-blur-xl border-t border-white/5 px-4 pb-[env(safe-area-inset-bottom,8px)] pt-3 sm:px-6">
-        {/* Track info */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${currentTrack ? 'bg-gradient-to-br from-teal-600 to-cyan-500' : 'bg-zinc-800'}`}>
-              <Music size={18} className="text-white" />
-            </div>
+        {/* Track info (tap to open Now Playing) */}
+        <div className="flex items-center justify-between mb-1">
+          <button
+            onClick={() => currentTrack && setShowNowPlaying(true)}
+            disabled={!currentTrack}
+            aria-label="Open now playing"
+            className="flex items-center gap-3 min-w-0 flex-1 text-left"
+          >
+            <Artwork src={currentTrack?.artworkUrl} name={currentTrack?.name} className="w-10 h-10 rounded-lg" />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-white truncate">
                 {currentTrack?.name || 'No track selected'}
               </p>
-              <p className="text-xs text-zinc-500">
-                {currentTrack ? `${formatTime(currentTime)} / ${formatTime(duration)}` : '--:-- / --:--'}
+              <p className="text-xs text-zinc-500 truncate">
+                {currentTrack
+                  ? `${currentTrack.artist ? `${currentTrack.artist} · ` : ''}${formatTime(currentTime)} / ${formatTime(duration)}`
+                  : '--:-- / --:--'}
               </p>
             </div>
-          </div>
-          {/* Volume - desktop only */}
-          <div className="hidden sm:flex items-center gap-2">
-            <button onClick={() => setMuted(!muted)} className="text-zinc-400 hover:text-white transition-colors">
-              {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-            </button>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={muted ? 0 : volume}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value)
-                setVolume(v)
-                setMuted(v === 0)
-                if (audioRef.current) audioRef.current.volume = v
-              }}
-              className="w-20 accent-teal-500"
-            />
-          </div>
+          </button>
+          <Volume volume={volume} muted={muted} onVolume={handleVolume} onToggleMute={() => setMuted((m) => !m)} className="hidden sm:flex" />
         </div>
 
-        {/* Progress bar */}
-        <div
-          ref={progressRef}
-          className="relative h-6 flex items-center cursor-pointer group mb-2"
-          onClick={handleSeek}
-          onTouchMove={handleSeek}
-        >
-          <div className="w-full h-1 bg-zinc-700/60 rounded-full overflow-hidden group-hover:h-1.5 transition-all">
-            <div
-              className="h-full bg-gradient-to-r from-teal-500 to-cyan-400 rounded-full relative"
-              style={{ width: `${progress}%` }}
-            >
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
-          </div>
-        </div>
+        <ProgressBar currentTime={currentTime} duration={duration} onSeek={seekTo} />
 
-        {/* Controls */}
-        <div className="flex items-center justify-center gap-3 sm:gap-5 pb-1">
-          <button
-            onClick={() => setShuffle(!shuffle)}
-            className={`p-2 rounded-lg transition-colors ${shuffle ? 'text-teal-400 bg-teal-400/10' : 'text-zinc-500 hover:text-white'}`}
-          >
-            <Shuffle size={18} />
-          </button>
-          <button
-            onClick={handlePrev}
-            className="p-2 text-zinc-300 hover:text-white transition-colors active:scale-90"
-          >
-            <SkipBack size={22} fill="currentColor" />
-          </button>
-          <button
-            onClick={handlePlayPause}
-            disabled={!currentTrack}
-            className="w-14 h-14 rounded-full bg-teal-600 hover:bg-teal-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white flex items-center justify-center transition-all active:scale-90 shadow-lg shadow-teal-600/30"
-          >
-            {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-0.5" />}
-          </button>
-          <button
-            onClick={handleNext}
-            className="p-2 text-zinc-300 hover:text-white transition-colors active:scale-90"
-          >
-            <SkipForward size={22} fill="currentColor" />
-          </button>
-          <button
-            onClick={() => setRepeat((r) => (r + 1) % 3)}
-            className={`p-2 rounded-lg transition-colors relative ${repeat > 0 ? 'text-teal-400 bg-teal-400/10' : 'text-zinc-500 hover:text-white'}`}
-          >
-            <Repeat size={18} />
-            {repeat === 2 && (
-              <span className="absolute -top-0.5 -right-0.5 text-[9px] font-bold bg-teal-500 text-white w-3.5 h-3.5 rounded-full flex items-center justify-center">
-                1
-              </span>
-            )}
-          </button>
+        <div className="pb-1">
+          <Controls {...controlProps} disabled={!currentTrack} />
         </div>
       </div>
+
+      {showNowPlaying && currentTrack && (
+        <NowPlaying
+          track={currentTrack}
+          currentTime={currentTime}
+          duration={duration}
+          onSeek={seekTo}
+          onClose={() => setShowNowPlaying(false)}
+          onEditLyrics={() => setEditingLyrics(true)}
+          volume={volume}
+          muted={muted}
+          onVolume={handleVolume}
+          onToggleMute={() => setMuted((m) => !m)}
+          {...controlProps}
+        />
+      )}
+
+      {editingLyrics && currentTrack && (
+        <LyricsEditor
+          key={currentTrack.id}
+          track={currentTrack}
+          onClose={() => setEditingLyrics(false)}
+          onSaved={upsertTrack}
+        />
+      )}
+
+      {showImport && (
+        <ImportModal job={job} onStart={startImport} onReset={resetImport} onClose={() => setShowImport(false)} />
+      )}
     </div>
   )
 }

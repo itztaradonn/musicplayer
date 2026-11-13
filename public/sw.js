@@ -1,6 +1,6 @@
-const CACHE_NAME = 'music-player-v2';
+const CACHE_NAME = 'music-player-v3';
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
@@ -16,6 +16,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+
+  // Never cache or intercept the import server (job polls must always be live)
+  if (url.pathname.startsWith('/api/')) return;
 
   // Network-first for HTML pages — always get fresh content
   if (event.request.mode === 'navigate' || event.request.destination === 'document') {

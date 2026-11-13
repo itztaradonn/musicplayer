@@ -2,16 +2,24 @@ import { supabase } from './supabase'
 
 const BUCKET = 'music'
 
+const publicUrl = (path) => supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+
+// Rows created before the YouTube feature have no artist/artwork/lyrics (undefined or null).
+export function withUrls(row) {
+  return {
+    ...row,
+    url: publicUrl(row.file_path),
+    artworkUrl: row.artwork_path ? publicUrl(row.artwork_path) : null,
+  }
+}
+
 export async function getAllTracks() {
   const { data, error } = await supabase
     .from('tracks')
     .select('*')
     .order('created_at', { ascending: true })
   if (error) throw error
-  return data.map((t) => ({
-    ...t,
-    url: supabase.storage.from(BUCKET).getPublicUrl(t.file_path).data.publicUrl,
-  }))
+  return data.map(withUrls)
 }
 
 export async function addTrack(file) {
@@ -30,14 +38,11 @@ export async function addTrack(file) {
     .single()
   if (error) throw error
 
-  return {
-    ...data,
-    url: supabase.storage.from(BUCKET).getPublicUrl(data.file_path).data.publicUrl,
-  }
+  return withUrls(data)
 }
 
-export async function deleteTrack(id, filePath) {
-  await supabase.storage.from(BUCKET).remove([filePath])
+export async function deleteTrack(id, filePath, artworkPath) {
+  await supabase.storage.from(BUCKET).remove([filePath, artworkPath].filter(Boolean))
   const { error } = await supabase.from('tracks').delete().eq('id', id)
   if (error) throw error
 }

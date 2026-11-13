@@ -1,0 +1,19 @@
+{
+  "name": "musicplayer-import-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Downloads YouTube audio, stores it in Supabase and generates lyrics",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.101.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  }
+}

@@ -1,16 +1,28 @@
-# React + Vite
+# My Music
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A personal music player (React + Vite + Tailwind, PWA) backed by Supabase and deployed on Vercel.
 
-Currently, two official plugins are available:
+- Upload MP3s, or **paste a YouTube link** and the song is downloaded into your library with its title, artist and cover.
+- **Apple Music-style Now Playing**: blurred cover backdrop, big artwork, and **synced lyrics** that follow the song (tap a line to jump to it).
+- Lyrics are **generated automatically** from the audio (Whisper) or **added by you** (plain text or `.lrc`), editable any time.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Run the player
 
-## React Compiler
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm run lint
+npm test         # lyrics parsing
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## YouTube import and lyrics
 
-## Expanding the ESLint configuration
+Downloading and transcribing need a small server, in [`server/`](server/README.md), which also covers hosting. Setup is three steps:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. Run [`supabase/migrations/001_music_metadata.sql`](supabase/migrations/001_music_metadata.sql) in the Supabase SQL editor.
+2. Deploy `server/` (see [`server/README.md`](server/README.md); Railway is the suggested host).
+3. In the app tap the link icon and enter the server address and token. They're stored on that device only.
+
+Optionally set `VITE_IMPORT_API_URL` on Vercel to prefill the server address. Never put the token or the Supabase `service_role` key in a `VITE_` variable: those end up in the public website.
+
+Without the server, uploading MP3s and playing music work exactly as before.
