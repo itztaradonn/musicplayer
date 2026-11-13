@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { config } from './config.js'
+import { checkinCookies, checkoutCookies } from './cookies.js'
 import { update } from './jobs.js'
 import { deriveMetadata } from './metadata.js'
 import { downloadObject, getTrack, insertTrack, removeObjects, updateTrack, uploadObject } from './storage.js'
@@ -23,15 +24,17 @@ export async function importYoutube(job, { url, autoLyrics = true, language }) {
   const { url: cleanUrl } = parseYoutubeUrl(url)
   const dir = await tmp()
   const uploaded = []
+  let cookies = null
   try {
+    cookies = await checkoutCookies(dir) // private copy: yt-dlp rewrites the cookie file it is given
     update(job, { stage: 'downloading' })
-    const info = await fetchInfo(cleanUrl)
+    const info = await fetchInfo(cleanUrl, cookies?.path)
     if (info.is_live) throw new UserError('Live streams cannot be imported.')
     if (info.duration && info.duration > config.maxDurationSec)
       throw new UserError(`That video is longer than the ${Math.round(config.maxDurationSec / 60)} minute limit.`)
     const meta = deriveMetadata(info)
 
-    const { audioPath, thumbPath } = await downloadAudio(cleanUrl, dir)
+    const { audioPath, thumbPath } = await downloadAudio(cleanUrl, dir, cookies?.path)
 
     update(job, { stage: 'saving' })
     const filePath = objectName('mp3')
@@ -82,6 +85,7 @@ export async function importYoutube(job, { url, autoLyrics = true, language }) {
       }
     }
   } finally {
+    await checkinCookies(cookies)
     await rm(dir, { recursive: true, force: true })
   }
 }

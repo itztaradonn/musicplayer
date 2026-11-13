@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { access, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { config } from './config.js'
@@ -97,14 +98,55 @@ export function parseCookies(input) {
 
 const publicSummary = ({ count, dropped, loggedIn, earliestExpiry }) => ({ configured: true, count, dropped, loggedIn, earliestExpiry })
 
-export async function saveCookies(input) {
-  const parsed = parseCookies(input)
+async function writeAtomic(text) {
   const file = config.cookiesPath
   await mkdir(path.dirname(file), { recursive: true })
   const tmp = `${file}.${process.pid}.tmp`
-  await writeFile(tmp, parsed.text, { mode: 0o600 })
+  await writeFile(tmp, text, { mode: 0o600 })
   await rename(tmp, file) // atomic: a download never sees a half-written file
+}
+
+export async function saveCookies(input) {
+  const parsed = parseCookies(input)
+  await writeAtomic(parsed.text)
   return { ...publicSummary(parsed), updatedAt: new Date().toISOString() }
+}
+
+const sha = (text) => crypto.createHash('sha256').update(text).digest('hex')
+
+/**
+ * yt-dlp writes its cookie jar back to the file it is given when it exits. So each import works on a
+ * private copy in its own temp folder (returns null when no cookies are saved), and the saved file is
+ * never touched while a download runs.
+ */
+export async function checkoutCookies(dir) {
+  let text
+  try {
+    text = await readFile(config.cookiesPath, 'utf8')
+  } catch {
+    return null
+  }
+  const copy = path.join(dir, 'cookies.txt')
+  await writeFile(copy, text, { mode: 0o600 })
+  return { path: copy, original: sha(text) }
+}
+
+/**
+ * After the import, keep the cookies YouTube refreshed during it (they rotate, and this extends their
+ * life), but only if nothing changed meanwhile. If you saved new cookies or removed them while the
+ * download ran, your action wins: removed cookies are never brought back and new ones never overwritten.
+ * Anything merged back goes through the same filtering as a paste.
+ */
+export async function checkinCookies(handle) {
+  if (!handle) return
+  try {
+    const [refreshed, current] = await Promise.all([readFile(handle.path, 'utf8'), readFile(config.cookiesPath, 'utf8')])
+    if (sha(current) !== handle.original) return // changed or removed during the job: leave it alone
+    const parsed = parseCookies(refreshed)
+    if (parsed.text !== current) await writeAtomic(parsed.text)
+  } catch {
+    // saved file removed meanwhile, copy unreadable or no longer valid: keep whatever is saved
+  }
 }
 
 /** Counts only; the cookie values never leave this file. */

@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { config } from './config.js'
-import { cookiesFileIfAny } from './cookies.js'
 import { UserError } from './errors.js'
 
 const HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtu.be'])
@@ -71,10 +70,9 @@ export function friendlyYtDlpError(stderr = '', signal = null, { usedCookies = f
   return `Download failed${last ? `: ${last.slice(0, 200)}` : '.'}`
 }
 
-async function baseArgs() {
+async function baseArgs(cookiesPath) {
   const args = ['--no-playlist', '--no-warnings', '--no-progress', ...config.ytDlpExtraArgs]
-  const cookies = await cookiesFileIfAny()
-  if (cookies) args.push('--cookies', cookies)
+  if (cookiesPath) args.push('--cookies', cookiesPath)
   return args
 }
 
@@ -88,16 +86,16 @@ async function runYtDlp(args, options) {
   }
 }
 
-export async function fetchInfo(url) {
-  const args = [...(await baseArgs()), '--skip-download', '--dump-single-json', '--', url]
+export async function fetchInfo(url, cookiesPath) {
+  const args = [...(await baseArgs(cookiesPath)), '--skip-download', '--dump-single-json', '--', url]
   const { stdout } = await runYtDlp(args, { timeoutMs: 2 * 60 * 1000 })
   return JSON.parse(stdout)
 }
 
 /** Downloads audio as MP3 (and the thumbnail as JPG) into `dir`. */
-export async function downloadAudio(url, dir) {
+export async function downloadAudio(url, dir, cookiesPath) {
   const args = [
-    ...(await baseArgs()),
+    ...(await baseArgs(cookiesPath)),
     '-f', 'bestaudio/best',
     '-x', '--audio-format', 'mp3', '--audio-quality', '192K',
     '--write-thumbnail', '--convert-thumbnails', 'jpg',
