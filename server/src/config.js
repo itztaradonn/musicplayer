@@ -1,3 +1,6 @@
+import os from 'node:os'
+import path from 'node:path'
+
 const env = process.env
 
 const list = (value) =>
@@ -26,6 +29,9 @@ export const config = {
   maxDurationSec: Number(env.MAX_DURATION_SEC) || 1800,
   ytDlpPath: env.YTDLP_PATH || 'yt-dlp',
   ytDlpExtraArgs: (env.YTDLP_EXTRA_ARGS || '--js-runtimes node').split(/\s+/).filter(Boolean),
+  // Where the YouTube cookies saved from the app live. Put this on a persistent volume or they are
+  // lost when the container restarts (the Docker image uses /data/cookies.txt).
+  cookiesPath: env.COOKIES_PATH || path.join(os.tmpdir(), 'musicplayer', 'cookies.txt'),
   cookiesB64: env.YT_COOKIES_B64 || '',
 }
 

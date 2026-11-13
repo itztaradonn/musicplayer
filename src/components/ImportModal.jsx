@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Check, Link as LinkIcon, Loader, Settings, TriangleAlert } from 'lucide-react'
+import { Check, Cookie, Link as LinkIcon, Loader, Settings, TriangleAlert } from 'lucide-react'
 import { withUrls } from '../db'
 import { isServerConfigured } from '../lib/api'
 import Artwork from './Artwork'
+import CookiesPanel from './CookiesPanel'
 import ServerSettings from './ServerSettings'
 import Sheet from './Sheet'
 
@@ -34,6 +35,7 @@ export default function ImportModal({ job, onStart, onReset, onClose }) {
   const [autoLyrics, setAutoLyrics] = useState(true)
   const [configured, setConfigured] = useState(isServerConfigured())
   const [showSettings, setShowSettings] = useState(!isServerConfigured())
+  const [view, setView] = useState('import') // 'import' | 'cookies'
 
   const running = job && (job.status === 'queued' || job.status === 'running')
   const finished = job?.status === 'done'
@@ -47,7 +49,11 @@ export default function ImportModal({ job, onStart, onReset, onClose }) {
   }
 
   return (
-    <Sheet title="Add from YouTube" onClose={onClose}>
+    <Sheet title={view === 'cookies' ? 'YouTube cookies' : 'Add from YouTube'} onClose={onClose}>
+      {view === 'cookies' ? (
+        <CookiesPanel onBack={() => setView('import')} />
+      ) : (
+      <>
       {showSettings && (
         <div className="mb-5 space-y-2">
           {!configured && <p className="text-sm text-white/60">Enter your access token once (the API_TOKEN you set on the server). It's saved on this device only.</p>}
@@ -79,6 +85,11 @@ export default function ImportModal({ job, onStart, onReset, onClose }) {
               <TriangleAlert size={16} className="shrink-0 mt-0.5" />
               <span>{job.error}</span>
             </p>
+          )}
+          {failed && /cookies/i.test(job.error || '') && (
+            <button type="button" onClick={() => setView('cookies')} className="w-full flex items-center justify-center gap-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-semibold py-2.5 transition-colors">
+              <Cookie size={16} /> Add YouTube cookies
+            </button>
           )}
 
           <button
@@ -126,10 +137,17 @@ export default function ImportModal({ job, onStart, onReset, onClose }) {
         </div>
       )}
 
-      {!showSettings && (
-        <button onClick={() => setShowSettings(true)} className="mt-5 flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors">
-          <Settings size={13} /> Server settings
+      <div className="mt-5 flex items-center gap-4">
+        {!showSettings && (
+          <button onClick={() => setShowSettings(true)} className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors">
+            <Settings size={13} /> Server settings
+          </button>
+        )}
+        <button onClick={() => setView('cookies')} className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors">
+          <Cookie size={13} /> YouTube cookies
         </button>
+      </div>
+      </>
       )}
     </Sheet>
   )

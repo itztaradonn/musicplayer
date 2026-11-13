@@ -49,7 +49,9 @@ yt-dlp breaks whenever YouTube changes something, and updates fix it. Docker reu
 
 YouTube often blocks downloads from cloud/datacenter IP addresses with *"Sign in to confirm you're not a bot"*. No host is guaranteed to avoid this, and it can change over time. In order of effort:
 
-1. **Cookies.** Log in to YouTube in a browser, export cookies for youtube.com as a Netscape `cookies.txt` (e.g. with the "Get cookies.txt LOCALLY" extension), then set `YT_COOKIES_B64` to the output of `base64 -w0 cookies.txt`. Use a throwaway Google account if you can: automated use of an account can get it flagged.
+1. **Save your YouTube cookies in the app.** Tap the link icon, then **YouTube cookies**, and paste them (the import error also has a button that takes you straight there). The screen explains how to export them. In short: sign in to YouTube in a private/incognito window, open `youtube.com/robots.txt`, export the cookies for youtube.com with a cookies.txt extension, close the window, and paste. Cookies work like a password to your Google account, so a throwaway account is safer. The server keeps only youtube.com and google.com cookies, stores them in a private file (`COOKIES_PATH`, mode 600), never logs them, and never sends them back to the website. Cookies expire or get rotated now and then, so if downloads start failing again, save fresh ones.
+
+   **Keep them across restarts:** the image stores them at `/data/cookies.txt`. Without a persistent volume, a restart or redeploy wipes that file and you paste them again. On Northflank, add a **volume** mounted at `/data` to the service (a volume ties the service to one instance, which is what we want anyway). The older `YT_COOKIES_B64` variable still works as a starting value when no cookies are saved.
 2. **Run it at home** on a spare PC or Raspberry Pi (same Docker image) and expose it with a free Cloudflare Tunnel. A home IP is rarely blocked. This is the most reliable option.
 
 Downloading from YouTube is against its terms of service, and music is copyrighted. Keep this to personal use.

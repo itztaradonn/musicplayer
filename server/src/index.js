@@ -2,12 +2,14 @@ import crypto from 'node:crypto'
 import cors from 'cors'
 import express from 'express'
 import { config, missingConfig } from './config.js'
+import { cookiesStatus, removeCookies, saveCookies, seedCookiesFromEnv } from './cookies.js'
 import { createJob, enqueue, getJob } from './jobs.js'
 import { generateLyrics, importYoutube } from './pipeline.js'
 import { mountStatic } from './static.js'
 import { getTrack, updateTrack } from './storage.js'
 import { lyricsEnabled } from './transcribe.js'
-import { UserError, parseYoutubeUrl } from './youtube.js'
+import { UserError } from './errors.js'
+import { parseYoutubeUrl } from './youtube.js'
 
 const missing = missingConfig()
 if (missing.length) {
@@ -21,7 +23,7 @@ app.use(
   cors({
     origin: config.allowedOrigins.length ? config.allowedOrigins : true,
     allowedHeaders: ['Authorization', 'Content-Type'],
-    methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   }),
 )
 app.use(express.json({ limit: '1mb' }))
@@ -77,6 +79,18 @@ app.put('/api/tracks/:id/lyrics', wrap(async (req, res) => {
   res.json({ track })
 }))
 
+// YouTube cookies (secret). Status only ever reports counts, never the cookie values.
+app.get('/api/cookies', wrap(async (req, res) => res.json(await cookiesStatus())))
+app.put('/api/cookies', wrap(async (req, res) => {
+  const { cookies } = req.body || {}
+  if (typeof cookies !== 'string') throw new UserError('Paste your cookies first.')
+  res.json(await saveCookies(cookies))
+}))
+app.delete('/api/cookies', wrap(async (req, res) => {
+  await removeCookies()
+  res.json({ configured: false })
+}))
+
 app.get('/api/jobs/:id', (req, res) => {
   const job = getJob(req.params.id)
   if (!job) return res.status(404).json({ error: 'Unknown job (the server may have restarted).' })
@@ -84,6 +98,16 @@ app.get('/api/jobs/:id', (req, res) => {
 })
 
 if (config.staticDir) mountStatic(app, config.staticDir)
+
+// Last stop for errors thrown outside the route handlers (e.g. an oversized or malformed body).
+// Never echo the request body back: it may contain cookies.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500
+  res.status(status).json({ error: status === 413 ? 'That is too large.' : status < 500 ? 'Bad request.' : 'Server error.' })
+})
+
+await seedCookiesFromEnv()
 
 app.listen(config.port, () => {
   console.log(`Listening on :${config.port}${config.staticDir ? ` (serving the site from ${config.staticDir})` : ' (API only)'}`)

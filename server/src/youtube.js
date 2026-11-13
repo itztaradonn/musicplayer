@@ -1,13 +1,13 @@
 import { spawn } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import { config } from './config.js'
+import { cookiesFileIfAny } from './cookies.js'
+import { UserError } from './errors.js'
 
 const HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtu.be'])
 const ID_RE = /^[\w-]{11}$/
 
-export class UserError extends Error {}
+export { UserError }
 
 /** Accepts any common YouTube link and returns a clean single-video watch URL + id. */
 export function parseYoutubeUrl(input) {
@@ -33,18 +33,7 @@ export function parseYoutubeUrl(input) {
   return { id, url: `https://www.youtube.com/watch?v=${id}` }
 }
 
-let cookiesPath = null
-async function getCookiesPath() {
-  if (!config.cookiesB64) return null
-  if (cookiesPath) return cookiesPath
-  const dir = path.join(os.tmpdir(), 'musicplayer-cookies')
-  await mkdir(dir, { recursive: true })
-  cookiesPath = path.join(dir, 'cookies.txt')
-  await writeFile(cookiesPath, Buffer.from(config.cookiesB64, 'base64'), { mode: 0o600 })
-  return cookiesPath
-}
-
-function run(cmd, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
+export function run(cmd, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
   return new Promise((resolve, reject) => {
     // No shell: arguments are passed as an array so a link can never inject a command.
     const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] })
@@ -60,17 +49,22 @@ function run(cmd, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
     child.on('close', (code, signal) => {
       clearTimeout(timer)
       if (code === 0) resolve({ stdout, stderr })
-      else reject(Object.assign(new Error(friendlyYtDlpError(stderr, signal)), { stderr }))
+      else {
+        const last = stderr.trim().split('\n').filter(Boolean).pop() || `exit code ${code}`
+        reject(Object.assign(new Error(`${path.basename(cmd)} failed: ${last.slice(0, 200)}`), { stderr, signal }))
+      }
     })
   })
 }
 
-export function friendlyYtDlpError(stderr = '', signal = null) {
+export function friendlyYtDlpError(stderr = '', signal = null, { usedCookies = false } = {}) {
   if (signal === 'SIGKILL') return 'The download took too long and was cancelled.'
   if (/sign in to confirm|not a bot/i.test(stderr))
-    return 'YouTube blocked the server ("confirm you\'re not a bot"). Add YouTube cookies to the server (see server/README.md).'
+    return usedCookies
+      ? 'YouTube still blocked the server even with your saved cookies. They have probably expired or been rotated. Export fresh cookies and save them again under YouTube cookies.'
+      : 'YouTube blocked the server ("confirm you\'re not a bot"). Add your YouTube cookies in the app (Add from YouTube, then YouTube cookies).'
   if (/private video|members-only|sign in to confirm your age|age-restricted/i.test(stderr))
-    return 'That video is private, age-restricted or members-only. Cookies from a logged-in account may help.'
+    return 'That video is private, age-restricted or members-only. Saving your YouTube cookies (Add from YouTube, then YouTube cookies) may help.'
   if (/video unavailable|has been removed|not available/i.test(stderr)) return 'That video is unavailable.'
   if (/HTTP Error 429|too many requests/i.test(stderr)) return 'YouTube is rate-limiting the server. Try again later.'
   const last = stderr.trim().split('\n').filter(Boolean).pop()
@@ -79,14 +73,24 @@ export function friendlyYtDlpError(stderr = '', signal = null) {
 
 async function baseArgs() {
   const args = ['--no-playlist', '--no-warnings', '--no-progress', ...config.ytDlpExtraArgs]
-  const cookies = await getCookiesPath()
+  const cookies = await cookiesFileIfAny()
   if (cookies) args.push('--cookies', cookies)
   return args
 }
 
+/** Runs yt-dlp and turns its failures into messages a person can act on. */
+async function runYtDlp(args, options) {
+  try {
+    return await run(config.ytDlpPath, args, options)
+  } catch (err) {
+    if (err.stderr === undefined) throw err // e.g. yt-dlp not installed
+    throw new Error(friendlyYtDlpError(err.stderr, err.signal, { usedCookies: args.includes('--cookies') }))
+  }
+}
+
 export async function fetchInfo(url) {
   const args = [...(await baseArgs()), '--skip-download', '--dump-single-json', '--', url]
-  const { stdout } = await run(config.ytDlpPath, args, { timeoutMs: 2 * 60 * 1000 })
+  const { stdout } = await runYtDlp(args, { timeoutMs: 2 * 60 * 1000 })
   return JSON.parse(stdout)
 }
 
@@ -100,8 +104,7 @@ export async function downloadAudio(url, dir) {
     '-o', path.join(dir, 'audio.%(ext)s'),
     '--', url,
   ]
-  await run(config.ytDlpPath, args)
+  await runYtDlp(args)
   return { audioPath: path.join(dir, 'audio.mp3'), thumbPath: path.join(dir, 'audio.jpg') }
 }
 
-export { run }

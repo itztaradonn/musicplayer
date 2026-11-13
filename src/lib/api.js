@@ -57,6 +57,11 @@ async function request(path, { method = 'GET', body, signal } = {}) {
 
 export const startImport = (url, autoLyrics) => request('/api/import', { method: 'POST', body: { url, autoLyrics } })
 export const startLyricsGeneration = (trackId) => request(`/api/tracks/${trackId}/generate-lyrics`, { method: 'POST', body: {} })
+// YouTube cookies. The server only ever reports counts back, never the cookie values.
+export const getCookiesStatus = () => request('/api/cookies')
+export const saveCookies = (cookies) => request('/api/cookies', { method: 'PUT', body: { cookies } })
+export const deleteCookies = () => request('/api/cookies', { method: 'DELETE' })
+
 export const saveLyrics = async (trackId, lyrics) => (await request(`/api/tracks/${trackId}/lyrics`, { method: 'PUT', body: { lyrics } })).track
 
 /**

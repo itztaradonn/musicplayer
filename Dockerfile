@@ -30,8 +30,11 @@ RUN npm ci --omit=dev --no-audit --no-fund
 COPY server/src ./src
 COPY --from=web /web/dist ./public
 
+# Saved YouTube cookies go here. Mount a persistent volume at /data or they reset on restart.
+RUN mkdir -p /data
 ENV NODE_ENV=production \
     STATIC_DIR=/app/public \
+    COOKIES_PATH=/data/cookies.txt \
     PORT=8787
 EXPOSE 8787
 CMD ["node", "src/index.js"]

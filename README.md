@@ -23,6 +23,8 @@ Downloading and transcribing need yt-dlp and ffmpeg, which can't run in the brow
 2. Deploy the repo on Northflank from the Dockerfile and set a few environment variables.
 3. Open your Northflank address, tap the link icon, and enter your access token once (stored on that device only).
 
+If YouTube blocks the server ("confirm you're not a bot"), paste your YouTube cookies in the app under **Add from YouTube → YouTube cookies**.
+
 Never put the token or the Supabase `service_role` key in a `VITE_` variable: those end up in the public website.
 
 Without the importer, uploading MP3s and playing music work exactly as before.
