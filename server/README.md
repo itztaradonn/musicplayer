@@ -19,6 +19,8 @@ Browsers can't download from YouTube themselves, which is why this runs on a ser
 
 ## Deploy on Northflank
 
+> The menu names below are from memory (I couldn't open Northflank's docs while writing this), so a label may differ slightly. The settings themselves are what matter.
+
 1. **Create a project**, then **Add service → Combined service** (build from Git and deploy).
 2. **Repository:** connect GitHub, pick `itztaradonn/musicplayer` and the branch to deploy.
 3. **Build:** choose **Dockerfile**, Dockerfile location `/Dockerfile`, build context `/` (the repo root, not `server/`).
@@ -34,7 +36,7 @@ Browsers can't download from YouTube themselves, which is why this runs on a ser
    | `YT_COOKIES_B64` | only if YouTube blocks you, see below |
 
    `PORT` and `STATIC_DIR` are already set by the image.
-6. **Resources:** a small plan is enough; I'd start with about 1 GB of RAM for ffmpeg and yt-dlp.
+6. **Resources:** a small plan is enough; I'd start with about 1 GB of RAM for ffmpeg and yt-dlp. **Keep it at exactly one instance.** Running jobs live in the server's memory, so with two replicas a progress check can land on the other one and report "Unknown job".
 7. **Health check** (optional): HTTP `GET /api/health` on port 8787.
 
 Because the site and the API share one address, there is no CORS setup and no server address to type in. Only the token.
