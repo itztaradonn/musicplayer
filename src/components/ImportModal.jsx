@@ -50,7 +50,7 @@ export default function ImportModal({ job, onStart, onReset, onClose }) {
     <Sheet title="Add from YouTube" onClose={onClose}>
       {showSettings && (
         <div className="mb-5 space-y-2">
-          {!configured && <p className="text-sm text-white/60">Connect your import server once. These are saved on this device only.</p>}
+          {!configured && <p className="text-sm text-white/60">Enter your access token once (the API_TOKEN you set on the server). It's saved on this device only.</p>}
           <ServerSettings onSaved={() => { setConfigured(true); setShowSettings(false) }} />
         </div>
       )}

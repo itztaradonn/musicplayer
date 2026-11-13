@@ -4,6 +4,7 @@ import express from 'express'
 import { config, missingConfig } from './config.js'
 import { createJob, enqueue, getJob } from './jobs.js'
 import { generateLyrics, importYoutube } from './pipeline.js'
+import { mountStatic } from './static.js'
 import { getTrack, updateTrack } from './storage.js'
 import { lyricsEnabled } from './transcribe.js'
 import { UserError, parseYoutubeUrl } from './youtube.js'
@@ -82,4 +83,8 @@ app.get('/api/jobs/:id', (req, res) => {
   res.json(publicJob(job))
 })
 
-app.listen(config.port, () => console.log(`Import server listening on :${config.port}`))
+if (config.staticDir) mountStatic(app, config.staticDir)
+
+app.listen(config.port, () => {
+  console.log(`Listening on :${config.port}${config.staticDir ? ` (serving the site from ${config.staticDir})` : ' (API only)'}`)
+})

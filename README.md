@@ -15,14 +15,14 @@ npm run lint
 npm test         # lyrics parsing
 ```
 
-## YouTube import and lyrics
+## YouTube import and lyrics (one Northflank service)
 
-Downloading and transcribing need a small server, in [`server/`](server/README.md), which also covers hosting. Setup is three steps:
+Downloading and transcribing need yt-dlp and ffmpeg, which can't run in the browser or on Vercel. So one Docker image, built from the root [`Dockerfile`](Dockerfile), runs **both the website and the importer**. Setup is three steps, all in [`server/README.md`](server/README.md):
 
 1. Run [`supabase/migrations/001_music_metadata.sql`](supabase/migrations/001_music_metadata.sql) in the Supabase SQL editor.
-2. Deploy `server/` (see [`server/README.md`](server/README.md); Railway is the suggested host).
-3. In the app tap the link icon and enter the server address and token. They're stored on that device only.
+2. Deploy the repo on Northflank from the Dockerfile and set a few environment variables.
+3. Open your Northflank address, tap the link icon, and enter your access token once (stored on that device only).
 
-Optionally set `VITE_IMPORT_API_URL` on Vercel to prefill the server address. Never put the token or the Supabase `service_role` key in a `VITE_` variable: those end up in the public website.
+Never put the token or the Supabase `service_role` key in a `VITE_` variable: those end up in the public website.
 
-Without the server, uploading MP3s and playing music work exactly as before.
+Without the importer, uploading MP3s and playing music work exactly as before.

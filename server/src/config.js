@@ -8,6 +8,8 @@ const list = (value) =>
 
 export const config = {
   port: Number(env.PORT) || 8787,
+  // Folder with the built website (npm run build -> dist). When set, this server serves the site too.
+  staticDir: env.STATIC_DIR || '',
   apiToken: env.API_TOKEN || '',
   allowedOrigins: list(env.ALLOWED_ORIGINS),
 

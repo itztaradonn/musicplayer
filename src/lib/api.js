@@ -13,7 +13,9 @@ function write(key, value) {
 
 export function getServerConfig() {
   return {
-    url: (read(URL_KEY) || import.meta.env.VITE_IMPORT_API_URL || '').replace(/\/+$/, ''),
+    // Saved address, else VITE_IMPORT_API_URL, else the address the site itself is served from
+    // (the one-service setup, where the same server hosts the site and the API).
+    url: (read(URL_KEY) || import.meta.env.VITE_IMPORT_API_URL || window.location.origin).replace(/\/+$/, ''),
     token: read(TOKEN_KEY),
   }
 }
