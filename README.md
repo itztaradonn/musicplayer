@@ -19,7 +19,7 @@ npm test         # lyrics parsing
 
 Downloading and transcribing need yt-dlp and ffmpeg, which can't run in the browser or on Vercel. So one Docker image, built from the root [`Dockerfile`](Dockerfile), runs **both the website and the importer**. Setup is three steps, all in [`server/README.md`](server/README.md):
 
-1. Run [`supabase/migrations/001_music_metadata.sql`](supabase/migrations/001_music_metadata.sql) in the Supabase SQL editor.
+1. The database (`tracks` table, `music` bucket, access rules) is defined in [`supabase/migrations/001_music_schema.sql`](supabase/migrations/001_music_schema.sql) and already applied to the `music` project.
 2. Deploy the repo on Northflank from the Dockerfile and set a few environment variables.
 3. Open your Northflank address, tap the link icon, and enter your access token once (stored on that device only).
 

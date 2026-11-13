@@ -10,7 +10,7 @@ Browsers can't download from YouTube themselves, which is why this runs on a ser
 
 ## One-time setup
 
-1. **Database.** In Supabase open *SQL Editor*, paste [`supabase/migrations/001_music_metadata.sql`](../supabase/migrations/001_music_metadata.sql) and run it. Existing songs are untouched.
+1. **Database.** Already created in your Supabase project `music` (`fsrcoljwsjafymremwgf`): the `tracks` table, the public `music` storage bucket and their access rules. The same SQL lives in [`supabase/migrations/001_music_schema.sql`](../supabase/migrations/001_music_schema.sql) if you ever need to recreate it (paste it into the SQL editor; it's safe to re-run).
 2. **Keys.**
    - Supabase *Project Settings → API → `service_role` secret*. Treat it like a password.
    - A Whisper key for automatic lyrics: a [Groq](https://console.groq.com) key or an OpenAI key (see `.env.example`). Skip it and you can still paste lyrics yourself.
@@ -30,7 +30,7 @@ Browsers can't download from YouTube themselves, which is why this runs on a ser
    | Variable | Value |
    | --- | --- |
    | `API_TOKEN` | the token you invented |
-   | `SUPABASE_URL` | `https://YOUR-PROJECT.supabase.co` |
+   | `SUPABASE_URL` | `https://fsrcoljwsjafymremwgf.supabase.co` |
    | `SUPABASE_SERVICE_ROLE_KEY` | the `service_role` key |
    | `WHISPER_API_KEY` | your Groq/OpenAI key (optional) |
    | `YT_COOKIES_B64` | only if YouTube blocks you, see below |

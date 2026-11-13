@@ -13,7 +13,7 @@ function db() {
 function explain(error) {
   if (error.code === 'PGRST116') return new UserError('Track not found.') // 0 rows matched
   if (/column .* (does not exist|of relation)|schema cache/i.test(error.message || ''))
-    return new UserError('The database is missing the new columns. Run supabase/migrations/001_music_metadata.sql in the Supabase SQL editor.')
+    return new UserError('The database is missing the new columns. Run supabase/migrations/001_music_schema.sql in the Supabase SQL editor.')
   return new Error(error.message || 'Database error')
 }
 
