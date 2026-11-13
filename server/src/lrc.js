@@ -10,8 +10,7 @@ const HALLUCINATIONS = [
 ]
 
 /**
- * Drops segments that are probably not singing: very likely silence, low
- * confidence, known filler phrases and the same line repeated over and over.
+ * Drops segments that are probably not singing: silence the model is unsure about, gibberish, known filler phrases and the same line repeated over and over.
  */
 export function cleanSegments(segments = []) {
   const out = []
@@ -19,8 +18,11 @@ export function cleanSegments(segments = []) {
   for (const seg of segments) {
     const text = String(seg.text || '').trim()
     if (!text) continue
-    if (typeof seg.no_speech_prob === 'number' && seg.no_speech_prob > 0.6) continue
-    if (typeof seg.avg_logprob === 'number' && seg.avg_logprob < -1.3) continue
+    // Same rule Whisper uses itself: "no speech" only counts when the model is also unsure of its words.
+    // Sung lines often score a high no-speech probability yet are transcribed confidently, so keep those.
+    const unsure = typeof seg.avg_logprob === 'number' && seg.avg_logprob < -1.0
+    if (typeof seg.no_speech_prob === 'number' && seg.no_speech_prob > 0.6 && unsure) continue
+    if (typeof seg.avg_logprob === 'number' && seg.avg_logprob < -1.6) continue // gibberish
     if (HALLUCINATIONS.some((re) => re.test(text))) continue
 
     const prev = out[out.length - 1]

@@ -4,9 +4,15 @@ import { X } from 'lucide-react'
 /** Bottom sheet on phones, centred dialog on larger screens. */
 export default function Sheet({ title, onClose, children }) {
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // Capture phase + stopPropagation so Escape closes only this sheet, not the Now Playing view under it
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      e.preventDefault()
+      onClose()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose])
 
   return (

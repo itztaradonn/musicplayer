@@ -14,6 +14,11 @@ export default function LyricsEditor({ track, onClose, onSaved }) {
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
+  const requestClose = () => {
+    if (text !== (track.lyrics || '') && !window.confirm('Discard your changes?')) return
+    onClose()
+  }
+
   const save = async () => {
     setBusy('save'); setError(''); setNote('')
     try {
@@ -54,7 +59,7 @@ export default function LyricsEditor({ track, onClose, onSaved }) {
   }
 
   return (
-    <Sheet title={`Lyrics · ${track.name}`} onClose={onClose}>
+    <Sheet title={`Lyrics · ${track.name}`} onClose={requestClose}>
       {!configured && (
         <div className="mb-4 space-y-2">
           <p className="text-sm text-white/60">Saving lyrics goes through your import server. Connect it first.</p>

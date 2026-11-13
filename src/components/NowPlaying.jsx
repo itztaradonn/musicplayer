@@ -13,7 +13,7 @@ export default function NowPlaying({
   const [showLyrics, setShowLyrics] = useState(false)
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e) => { if (e.key === 'Escape' && !e.defaultPrevented) onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])

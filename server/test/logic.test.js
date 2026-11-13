@@ -59,12 +59,13 @@ test('cleanSegments drops silence, filler, junk and repeat loops', () => {
     { start: 0, text: ' Hello darkness ', no_speech_prob: 0.1, avg_logprob: -0.3 },
     { start: 5, text: 'Thanks for watching!' },
     { start: 6, text: '♪♪' },
-    { start: 8, text: 'mumble', no_speech_prob: 0.9 },
+    { start: 8, text: 'mumble', no_speech_prob: 0.9, avg_logprob: -1.2 },
     { start: 9, text: 'unsure words', avg_logprob: -2 },
+    { start: 9.5, text: 'sung but flagged quiet', no_speech_prob: 0.8, avg_logprob: -0.4 },
     ...[10, 12, 14, 16, 18].map((start) => ({ start, text: 'la la la' })),
     { start: 20, text: '   ' },
   ])
-  assert.deepEqual(out.map((s) => s.text), ['Hello darkness', 'la la la', 'la la la', 'la la la'])
+  assert.deepEqual(out.map((s) => s.text), ['Hello darkness', 'sung but flagged quiet', 'la la la', 'la la la', 'la la la'])
 })
 
 test('cleanSegments keeps lyrics in any script (Thai, Japanese, accents)', () => {
